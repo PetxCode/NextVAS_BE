@@ -22,7 +22,13 @@ export const signup = async (req: Request, res: Response) => {
     const user = new User({
       email,
       password: hashedPassword,
-      name
+      name,
+      subscription: {
+        tier: 'free',
+        lessonsUsed: 0,
+        billingCycleStart: Date.now(),
+        expiresAt: 253402300800000 // Year 9999 (Lifetime)
+      }
     });
 
     await user.save();
@@ -40,7 +46,7 @@ export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+    const user:any = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -51,6 +57,12 @@ export const login = async (req: Request, res: Response) => {
     }
 
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
+
+    // Auto-fix for free tier expiry (Migration)
+    if (user.subscription.tier === 'free' && (!user.subscription.expiresAt || user.subscription.expiresAt === 0)) {
+      user.subscription.expiresAt = 253402300800000;
+      await user.save();
+    }
 
     res.status(200).json({ 
       token, 
@@ -78,6 +90,13 @@ export const getProfile = async (req: any, res: Response) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+
+    // Auto-fix for free tier expiry (Migration)
+    if (user.subscription && user.subscription.tier === 'free' && (!user.subscription.expiresAt || user.subscription.expiresAt === 0)) {
+      user.subscription.expiresAt = 253402300800000;
+      await user.save();
+    }
+
     res.json(user);
   } catch (err) {
     res.status(500).json({ message: 'Something went wrong' });
@@ -184,5 +203,38 @@ export const recordSession = async (req: any, res: Response) => {
   } catch (err) {
     console.error("Session recording error:", err);
     res.status(500).json({ message: 'Failed to record session' });
+  }
+};
+
+export const upgradeSubscription = async (req: any, res: Response) => {
+  try {
+    const { tier } = req.body;
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Define expiry periods (in days)
+    const periods: Record<string, number> = {
+      'scholar': 30,    // 1 Month
+      'master': 90,     // 1 Term (~3 Months)
+      'legend': 365     // 1 Year
+    };
+
+    const days = periods[tier] || 30;
+    const expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000);
+
+    user.subscription = {
+      tier,
+      lessonsUsed: 0,
+      billingCycleStart: Date.now(),
+      expiresAt: expiresAt
+    };
+
+    await user.save();
+
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: 'Upgrade failed' });
   }
 };

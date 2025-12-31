@@ -11,9 +11,10 @@ const UserSchema = new Schema({
     voiceName: { type: String, default: 'Kore' },
     theme: { type: String, default: 'dark' },
     subscription: {
-        tier: { type: String, default: 'scholar' },
+        tier: { type: String, default: 'free' },
         lessonsUsed: { type: Number, default: 0 },
-        billingCycleStart: { type: Number, default: Date.now }
+        billingCycleStart: { type: Number, default: Date.now },
+        expiresAt: { type: Number, default: 0 }
     },
     activityLog: [
         {
